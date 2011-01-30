@@ -136,6 +136,10 @@ int main(void)
     xTaskCreate(vOLEDTask, (signed portCHAR *) "OLED",
 		mainOLED_TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 
+	/* Configure the high frequency interrupt used to measure the interrupt
+	jitter time. */
+	vSetupHighFrequencyTimer();
+
     /* Start the scheduler. */
     vTaskStartScheduler();
 
