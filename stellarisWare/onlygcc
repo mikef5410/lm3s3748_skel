@@ -1,0 +1,3 @@
+#!/bin/bash
+find . -name "*ccs*" -o -name "*codered*" -o -name "*ewarm*" -o -name "*rvmdk*" -o -name "*sourcery*" -o -name "*.sgxx" -o -name "cr_project*" -o -name "*.uv*" -o -name "*.ewp" -o -name "*.Opt" -o -name "*.Uv2" | xargs rm -rf
+

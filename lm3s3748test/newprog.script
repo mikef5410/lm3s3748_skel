@@ -1,0 +1,25 @@
+# First connect openocd to the card with openocd -f board/ek-lm3s3748.cfg
+# then in another window telnet localhost 4444 and type these commands:
+#
+halt
+sleep 200
+wait_halt
+flash probe 0
+#sleep 500
+flash info 0
+#sleep 500
+#flash protect 0 0 31 off
+#sleep 500
+
+#THIS ...
+flash erase_sector 0 0 127 
+sleep 200
+flash write_bank 0 ./RTOSDemo/RTOSDemo.bin 0
+#OR THIS ...
+#flash write_image erase ./RTOSDemo/RTOSDemo.axf 
+
+sleep 200
+reset run
+shutdown
+
+

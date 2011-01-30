@@ -1,0 +1,2 @@
+export PATH=/opt/cross-arm/arm-bare_newlib_cortex_m3_nommu-eabi/bin:/opt/cross-arm/bin:$PATH
+export PATH=/opt/cross-arm/arm-bare_newlib_cortex_m3_nommu-eabi/arm-bare_newlib_cortex_m3_nommu-eabi/bin:$PATH
