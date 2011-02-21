@@ -17,7 +17,7 @@
  */
 
 /* Standard includes. */
-#include <stdio.h>
+//#include <stdio.h>
 
 /* Scheduler includes. */
 #include "FreeRTOS.h"
@@ -29,7 +29,7 @@
 #define TARGET_IS_DUSTDEVIL_RA0
 
 /* Hardware library includes. */
-//#include "inc/lm3s3748.h"
+#include "inc/lm3s3748.h"
 #include "inc/hw_sysctl.h"
 #include "inc/hw_memmap.h"
 #include "inc/hw_types.h"
@@ -46,15 +46,15 @@
 #include "bitmap.h"
 
 
-
 /*-- ---------------------------------------------------------*/
 /* The time between cycles of the 'check' functionality (defined within the
 tick hook. */
-#define mainCHECK_DELAY                                         ( ( portTickType ) 5000 / portTICK_RATE_MS )
+#define mainCHECK_DELAY                                         ( ( portTickType ) 500 / portTICK_RATE_MS )
 
 
 /* The OLED task uses the sprintf function so requires a little more stack too. */
 #define mainOLED_TASK_STACK_SIZE			( configMINIMAL_STACK_SIZE + 50 )
+#define mainCMD_TASK_STACK_SIZE			        ( configMINIMAL_STACK_SIZE + 50 )
 /* Task priorities. */
 #define mainQUEUE_POLL_PRIORITY				( tskIDLE_PRIORITY + 2 )
 #define mainCHECK_TASK_PRIORITY				( tskIDLE_PRIORITY + 3 )
@@ -86,6 +86,7 @@ tick hook. */
  * the message to the gatekeeper.
  */
 static void vOLEDTask(void *pvParameters);
+static void vCMDTask(void *pvParameters);
 
 /*
  * Configure the hardware for the demo.
@@ -116,9 +117,9 @@ unsigned portLONG ulIdleError = pdFALSE;
 
 /*-----------------------------------------------------------*/
 
-#define CMD_BUF_SIZE            64
-static char g_cCmdBuf[CMD_BUF_SIZE];
-
+#define CMD_BUF_SIZE            128
+static char cmdBuf[CMD_BUF_SIZE];
+int status = 0;
 /*************************************************************************
  * Please ensure to read http://www.freertos.org/portLM3Sxxxx_Eclipse.html
  * which provides information on configuring and running this demo for the
@@ -128,6 +129,7 @@ int main(void)
 {
     prvSetupHardware();
 
+    UARTprintf("I'm here\n");
     /* Create the queue used by the OLED task.  Messages for display on the OLED
        are received via this queue. */
     xOLEDQueue = xQueueCreate(mainOLED_QUEUE_SIZE, sizeof(xOLEDMessage));
@@ -136,16 +138,22 @@ int main(void)
     xTaskCreate(vOLEDTask, (signed portCHAR *) "OLED",
 		mainOLED_TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 
-	/* Configure the high frequency interrupt used to measure the interrupt
-	jitter time. */
-	vSetupHighFrequencyTimer();
+
+    xTaskCreate(vCMDTask, (signed portCHAR *) "CMD",
+                mainCMD_TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+
+    /* Configure the high frequency interrupt used to measure the interrupt
+       jitter time. */
+    vSetupHighFrequencyTimer();
 
     /* Start the scheduler. */
     vTaskStartScheduler();
 
+    
     /* Will only get here if there was insufficient memory to create the idle
        task. */
     for (;;);
+        
     return 0;
 }
 
@@ -153,6 +161,7 @@ int main(void)
 
 void prvSetupHardware(void)
 {
+    unsigned long dummy;
     /* If running on Rev A2 silicon, turn the LDO voltage up to 2.75V.  This is
        a workaround to allow the PLL to operate reliably. */
     if (DEVICE_IS_REVA2) {
@@ -162,6 +171,26 @@ void prvSetupHardware(void)
     /* Set the clocking to run from the PLL at 50 MHz */
     ROM_SysCtlClockSet(SYSCTL_SYSDIV_4 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN |
 		       SYSCTL_XTAL_8MHZ);
+   //
+    // Enable the peripherals used by this example.
+    //
+    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
+    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_SSI0);
+    ROM_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
+
+    //
+    // Configure SysTick for a 100Hz interrupt.  The FatFs driver wants a 10 ms
+    // tick.
+    //
+    ROM_SysTickPeriodSet(ROM_SysCtlClockGet() / 100);
+    ROM_SysTickEnable();
+    ROM_SysTickIntEnable();
+
+    //
+    // Enable Interrupts
+    //
+    IntMasterEnable();
+
 
     //
     // Set GPIO A0 and A1 as UART.
@@ -172,6 +201,22 @@ void prvSetupHardware(void)
     // Initialize the UART as a console for text I/O.
     //
     UARTStdioInit(0);
+  
+    //
+    // Enable the GPIO port that is used for the on-board LED.
+    //
+    SYSCTL_RCGC2_R = SYSCTL_RCGC2_GPIOF;
+    // Do a dummy read to insert a few cycles after enabling the peripheral.
+    //
+    dummy = SYSCTL_RCGC2_R;
+
+    //
+    // Enable the GPIO pin for the LED (PF0).  Set the direction as output, and
+    // enable the GPIO pin for digital function.
+    //
+    GPIO_PORTF_DIR_R = 0x01;
+    GPIO_PORTF_DEN_R = 0x01;
+
 }
 
 /*-----------------------------------------------------------*/
@@ -181,6 +226,7 @@ void vApplicationTickHook(void)
     static xOLEDMessage xMessage = { "PASS" };
     static unsigned portLONG ulTicksSinceLastDisplay = 0;
     portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
+    static unsigned long on;
 
     /* Called from every tick interrupt.  Have enough ticks passed to make it
        time to perform our health status check again? */
@@ -190,12 +236,35 @@ void vApplicationTickHook(void)
 
 	/* Send the message to the OLED gatekeeper for display. */
 	xHigherPriorityTaskWoken = pdFALSE;
-	xQueueSendFromISR(xOLEDQueue, &xMessage,
-			  &xHigherPriorityTaskWoken);
+        //printf("From vApplicationTickHook\n");
+	//xQueueSendFromISR(xOLEDQueue, &xMessage,
+	//		  &xHigherPriorityTaskWoken);
+
+        //Toggle the LED
+        if (on) {
+            GPIO_PORTF_DATA_R |= 0x1;
+            on=0;
+        } else {
+            GPIO_PORTF_DATA_R &= ~(0x1);
+            on=1;
+        }
     }
 }
 
 /*-----------------------------------------------------------*/
+void vCMDTask(void *pvParameters)
+{
+    while(1) {
+        UARTprintf("\n> ");
+        UARTgets(cmdBuf, sizeof(cmdBuf));
+        status = CmdLineProcess(cmdBuf);
+        if (status == CMDLINE_BAD_CMD) {
+            UARTprintf("Bad command\n");
+        }
+    }
+    return;
+}
+
 
 void vOLEDTask(void *pvParameters)
 {
@@ -265,7 +334,7 @@ void vOLEDTask(void *pvParameters)
 
 	/* Display the message along with the maximum jitter time from the
 	   high priority time test. */
-	sprintf(cMessage, "%s ", xMessage.pcMessage );
+	sprintf(cMessage, "%s ", xMessage.pcMessage);
 	vOLEDStringDraw(cMessage, 0, ulY, mainFULL_SCALE);
     }
 }
@@ -287,8 +356,7 @@ void vApplicationStackOverflowHook(xTaskHandle * pxTask,
 // available commands with a brief description.
 //
 //*****************************************************************************
-int
-Cmd_help(int argc, char *argv[])
+int Cmd_help(int argc, char *argv[])
 {
     tCmdLineEntry *pEntry;
 
@@ -307,22 +375,21 @@ Cmd_help(int argc, char *argv[])
     // Enter a loop to read each entry from the command table.  The end of the
     // table has been reached when the command name is NULL.
     //
-    while(pEntry->pcCmd)
-    {
-        //
-        // Print the command name and the brief description.
-        //
-        UARTprintf("%s%s\n", pEntry->pcCmd, pEntry->pcHelp);
+    while (pEntry->pcCmd) {
+	//
+	// Print the command name and the brief description.
+	//
+	UARTprintf("%s%s\n", pEntry->pcCmd, pEntry->pcHelp);
 
-        //
-        // Advance to the next entry in the table.
-        //
-        pEntry++;
+	//
+	// Advance to the next entry in the table.
+	//
+	pEntry++;
     }
     //
     // Return success.
     //
-    return(0);
+    return (0);
 }
 
 
@@ -333,11 +400,12 @@ Cmd_help(int argc, char *argv[])
 //
 //*****************************************************************************
 
-tCmdLineEntry g_sCmdTable[] =
-{
-    { "help",   Cmd_help,      " : Display list of commands" },
-    { "h",      Cmd_help,   "    : alias for help" },
-    { "?",      Cmd_help,   "    : alias for help" },
-    { 0, 0, 0 }
+tCmdLineEntry g_sCmdTable[] = {
+    {"help", Cmd_help, " : Display list of commands"}
+    ,
+    {"h", Cmd_help, "    : alias for help"}
+    ,
+    {"?", Cmd_help, "    : alias for help"}
+    ,
+    {0, 0, 0}
 };
-

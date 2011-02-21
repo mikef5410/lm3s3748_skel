@@ -4280,7 +4280,9 @@
 #define SYSCTL_DC1_MINSYSDIV_M  0x0000F000  // System Clock Divider
 #define SYSCTL_DC1_MINSYSDIV_50 0x00003000  // Specifies a 50-MHz CPU clock
                                             // with a PLL divider of 4
+#ifndef SYSCTL_DC1_ADCSPD_M
 #define SYSCTL_DC1_ADCSPD_M     0x00000300  // Max ADC Speed
+#endif
 #define SYSCTL_DC1_ADCSPD_1M    0x00000300  // 1M samples/second
 #define SYSCTL_DC1_MPU          0x00000080  // MPU Present
 #define SYSCTL_DC1_HIB          0x00000040  // Hibernation Module Present
@@ -4720,7 +4722,9 @@
 //*****************************************************************************
 #define SYSCTL_RCGC0_PWM        0x00100000  // PWM Clock Gating Control
 #define SYSCTL_RCGC0_ADC        0x00010000  // ADC0 Clock Gating Control
+#ifndef SYSCTL_RCGC0_ADCSPD_M
 #define SYSCTL_RCGC0_ADCSPD_M   0x00000300  // ADC Sample Speed
+#endif
 #define SYSCTL_RCGC0_ADCSPD125K 0x00000000  // 125K samples/second
 #define SYSCTL_RCGC0_ADCSPD250K 0x00000100  // 250K samples/second
 #define SYSCTL_RCGC0_ADCSPD500K 0x00000200  // 500K samples/second
@@ -4770,7 +4774,9 @@
 //*****************************************************************************
 #define SYSCTL_SCGC0_PWM        0x00100000  // PWM Clock Gating Control
 #define SYSCTL_SCGC0_ADC        0x00010000  // ADC0 Clock Gating Control
+#ifndef SYSCTL_SCGC0_ADCSPD_M
 #define SYSCTL_SCGC0_ADCSPD_M   0x00000300  // ADC Sample Speed
+#endif
 #define SYSCTL_SCGC0_ADCSPD125K 0x00000000  // 125K samples/second
 #define SYSCTL_SCGC0_ADCSPD250K 0x00000100  // 250K samples/second
 #define SYSCTL_SCGC0_ADCSPD500K 0x00000200  // 500K samples/second

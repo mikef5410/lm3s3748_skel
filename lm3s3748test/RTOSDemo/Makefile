@@ -8,9 +8,10 @@ LUMINARY_GR_DIR=$(LUMINARY_DIR)/grlib
 TOOLDIR=/opt/cross-arm/arm-bare_newlib_cortex_m3_nommu-eabi/bin
 TOOLPREFIX=arm-bare_newlib_cortex_m3_nommu-eabi
 
-OPENOCD=/opt/cross-arm/bin/openocd
-CC=$(TOOLDIR)/$(TOOLPREFIX)-gcc
-OBJCOPY=$(TOOLDIR)/$(TOOLPREFIX)-objcopy
+PATH:=$(TOOLDIR):/opt/cross-arm/bin:$(PATH)
+OPENOCD=openocd
+CC=$(TOOLPREFIX)-gcc
+OBJCOPY=$(TOOLPREFIX)-objcopy
 LDSCRIPT=standalone.ld
 
 PROG = RTOSDemo
@@ -51,6 +52,7 @@ OBJS = $(SOURCE:.c=.o)
 
 
 all: $(PROG).bin
+	arm-bare_newlib_cortex_m3_nommu-eabi-size $(PROG).axf
 
 $(PROG).bin : $(PROG).axf
 	$(OBJCOPY) $(PROG).axf -O binary $(PROG).bin
@@ -64,13 +66,43 @@ $(OBJS) : %.o : %.c Makefile FreeRTOSConfig.h
 startup.o : startup.c Makefile
 	$(CC) -c $(CFLAGS) -O1 startup.c -o startup.o
 
+
+
 download.cmd: Makefile
 	/bin/echo -e "init\nhalt\nsleep 200\nwait_halt\nflash write_image erase $(AXF)\nsleep 200\nreset run\nshutdown\n" > download.cmd
 
 download: $(PROG).axf download.cmd
 	$(OPENOCD)  -f board/ek-lm3s3748.cfg -f download.cmd
 
-clean :
+
+############
+# Source indexing with cscope, idutils and etags 
+############
+cscope id etags tags: FILETYPES:=-iname "*.cpp" -o -iname "*.hpp" -o -name "*.S" -o -iname "*.c" -o -iname "*.h" -o -name "*.s" -o -name "*.cc"
+cscope id etags tags: INDEX_FILES:=$(shell (find  . $(RTOS_SOURCE_DIR) $(LUMINARY_DIR) $(LUMINARY_DRIVER_DIR) $(LUMINARY_GR_DIR) $(FILETYPES)))
+
+cscope:
+	@echo cscope ...
+	@cscope -f cscope.out -q -b -k $(INDEX_FILES)
+
+id:
+	@echo idutils ...
+	@rm -f ID
+	@mkid -s --output=ID $(INDEX_FILES)
+	export IDPATH=`pwd`/ID;
+
+etags:
+	@echo etags ...
+	@rm -f TAGS
+	@echo $(INDEX_FILES) | xargs etags --output=TAGS --append
+
+tags: cscope id etags
+
+cleantags:
+	rm -f cscope.out* ID TAGS
+
+
+clean : cleantags
 	touch Makefile
 	rm $(OBJS) $(PROG).bin $(PROG).axf $(PROG).map
 
